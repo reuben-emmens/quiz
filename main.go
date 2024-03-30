@@ -8,6 +8,7 @@ import (
 	"io"
 	"log"
 	"os"
+	"strings"
 	"sync"
 	"time"
 )
@@ -18,6 +19,11 @@ var (
 	lineCount int
 	answer    string
 )
+
+type problem struct {
+	q string
+	a string
+}
 
 func createReader(fileName string) (*csv.Reader, error) {
 	contents, err := os.ReadFile(fileName) // For read access.
@@ -38,12 +44,17 @@ func quiz(r *csv.Reader, wg *sync.WaitGroup, score, lineCount *int) {
 		}
 		*lineCount++
 
-		fmt.Printf("%s\n", record[0])
+		p := problem{
+			q: record[0],
+			a: strings.TrimSpace(record[1]),
+		}
+
+		fmt.Printf("Problem: %s\n", p.q)
 
 		// Taking input from user
 		fmt.Print("Answer: ")
 		fmt.Scanln(&answer)
-		if answer == record[1] {
+		if answer == p.a {
 			*score++
 		}
 	}
@@ -58,14 +69,14 @@ func timer(d *int, score, lineCount *int) {
 }
 
 func main() {
+	csvPtr := flag.String("csv", "problems.csv", "Path to the CSV file containing the problems in a 'question,answer' format.")
 	timerPtr := flag.Int("timer", 30, "The time allowed to answer all questions.")
 
 	flag.Parse()
 
-	fileName := "problems.csv"
-	r, err := createReader(fileName)
+	r, err := createReader(*csvPtr)
 	if err != nil {
-		log.Panic("Unable to read CSV file.")
+		log.Fatalf("Unable to read CSV file.")
 	}
 
 	fmt.Println("Go!")
