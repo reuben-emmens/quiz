@@ -5,19 +5,14 @@ import (
 	"encoding/csv"
 	"flag"
 	"fmt"
-	"io"
 	"log"
 	"os"
-	"strings"
-	"sync"
 	"time"
 )
 
 var (
-	wg        sync.WaitGroup
 	score     int
 	lineCount int
-	answer    string
 )
 
 type problem struct {
@@ -33,39 +28,47 @@ func createReader(fileName string) (*csv.Reader, error) {
 
 	return csv.NewReader(bytes.NewReader(contents)), nil
 }
-func quiz(r *csv.Reader, wg *sync.WaitGroup, score, lineCount *int) {
-	for {
-		record, err := r.Read()
-		if err == io.EOF {
-			break
-		}
-		if err != nil {
-			log.Fatal(err)
-		}
-		*lineCount++
 
-		p := problem{
+func parseCsv(r *csv.Reader) ([]problem, error) {
+	records, err := r.ReadAll()
+	if err != nil {
+		return nil, err
+	}
+
+	ret := make([]problem, len(records))
+
+	for i, record := range records {
+		ret[i] = problem{
 			q: record[0],
-			a: strings.TrimSpace(record[1]),
-		}
-
-		fmt.Printf("Problem: %s\n", p.q)
-
-		// Taking input from user
-		fmt.Print("Answer: ")
-		fmt.Scanln(&answer)
-		if answer == p.a {
-			*score++
+			a: record[1],
 		}
 	}
 
-	wg.Done()
-}
+	return ret, nil
 
-func timer(d *int, score, lineCount *int) {
-	time.Sleep(time.Duration(*d) * time.Second)
-	fmt.Printf("\nYour %d second timer has passed, and your score so far was %d correct out of %d\n", *d, *score, *lineCount)
-	os.Exit(0)
+}
+func quiz(problems []problem, timer *time.Timer, score, lineCount *int) {
+	for _, p := range problems {
+		*lineCount++
+		fmt.Printf("Problem: %s\n", p.q)
+
+		// Taking input from user
+		answerCh := make(chan string)
+		go func() {
+			var answer string
+			fmt.Scanf("%s\n", &answer)
+			answerCh <- answer
+		}()
+
+		select {
+		case <-timer.C:
+			return
+		case answer := <-answerCh:
+			if answer == p.a {
+				*score++
+			}
+		}
+	}
 }
 
 func main() {
@@ -76,13 +79,18 @@ func main() {
 
 	r, err := createReader(*csvPtr)
 	if err != nil {
+		log.Fatalf("Unable to find CSV file.")
+	}
+
+	problems, err := parseCsv(r)
+	if err != nil {
 		log.Fatalf("Unable to read CSV file.")
 	}
 
-	fmt.Println("Go!")
-	wg.Add(1)
-	go quiz(r, &wg, &score, &lineCount)
-	go timer(timerPtr, &score, &lineCount)
-	wg.Wait()
+	// fmt.Println("Go!")
+	timer := time.NewTimer(time.Duration(*timerPtr) * time.Second)
+
+	quiz(problems, timer, &score, &lineCount)
+
 	fmt.Printf("Your score was %d out of %d\n", score, lineCount)
 }
